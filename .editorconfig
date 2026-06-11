@@ -6,14 +6,10 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.{c,h}]
+[*.rs]
 indent_style = space
 indent_size = 4
 
-[*.{yml,yaml,json}]
+[*.{yml,yaml,json,toml}]
 indent_style = space
 indent_size = 2
-
-[CMakeLists.txt,*.cmake]
-indent_style = space
-indent_size = 4

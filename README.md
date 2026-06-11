@@ -44,20 +44,31 @@ pipeline layouts.
 
 ## Building
 
-Requirements: CMake ≥ 3.25, Ninja, a C17 compiler, Vulkan headers + loader,
-`glslangValidator` (package `glslang-tools`), and zlib (examples only).
+Requirements: a Rust toolchain ≥ 1.77 (`cargo`), the Vulkan loader, and
+`glslangValidator` (package `glslang-tools`) to compile the embedded shaders.
 For headless testing, the lavapipe CPU driver (`mesa-vulkan-drivers`) works.
 
 ```sh
-cmake --preset release
-cmake --build --preset release
+cargo build --release
 ```
 
-The layer and its manifest land in `build/release/layer.d/`. To install
-system-wide instead:
+This produces the layer shared object `target/release/libmirror.so`. Generate
+a loader manifest pointing at it (adjust the absolute path):
 
 ```sh
-cmake --install build/release
+cat > VkLayer_MIRROR_mirror.json <<EOF
+{
+  "file_format_version": "1.2.0",
+  "layer": {
+    "name": "VK_LAYER_MIRROR_mirror",
+    "type": "GLOBAL",
+    "library_path": "$(pwd)/target/release/libmirror.so",
+    "api_version": "1.3.0",
+    "implementation_version": "1",
+    "description": "Renders depth instead of materials, with configurable highlights"
+  }
+}
+EOF
 ```
 
 ## Usage
@@ -65,14 +76,10 @@ cmake --install build/release
 Point the loader at the manifest directory and enable the layer:
 
 ```sh
-export VK_ADD_LAYER_PATH=/path/to/mirror/build/release/layer.d
+export VK_ADD_LAYER_PATH=/path/to/manifest-dir
 export VK_INSTANCE_LAYERS=VK_LAYER_MIRROR_mirror
 ./your-game
 ```
-
-(With `cmake --install`, the manifest is in the standard
-`share/vulkan/explicit_layer.d` location and `VK_ADD_LAYER_PATH` is not
-needed.)
 
 ### Configuration
 
@@ -100,21 +107,27 @@ export MIRROR_HIGHLIGHT=4af9203c828fcd45=00ff00,9c01b6a2dd6ef2b3=ffcc00
 ## Development
 
 ```sh
-cmake --preset dev          # Debug + warnings-as-errors
-cmake --build --preset dev
-ctest --preset dev          # unit + headless integration tests
+cargo test --workspace      # unit + headless integration tests
+cargo fmt --all -- --check  # formatting
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-The integration tests render real scenes through the layer on any Vulkan
-device (lavapipe is enough) and check pixel-exact results, including a run
-under `VK_LAYER_KHRONOS_validation` that must produce zero validation
-errors. `cmake --preset sanitize` enables ASan + UBSan (run tests with
-`ASAN_OPTIONS=detect_leaks=0`; the loader and driver leak by design).
-
-The example that produced the screenshots above:
+The integration tests build the layer, register it with the loader
+automatically, render real scenes through it on any Vulkan device (lavapipe
+is enough) and check pixel-exact results — including a run under
+`VK_LAYER_KHRONOS_validation` that must produce zero validation errors. On a
+machine without a Vulkan device the render scenarios skip cleanly. Point the
+loader at lavapipe for headless runs:
 
 ```sh
-VK_ADD_LAYER_PATH=build/dev/layer.d ./build/dev/examples/scene docs/screenshots
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json XDG_RUNTIME_DIR=/tmp
+```
+
+The example that produced the screenshots above builds and registers the
+layer itself, so it needs no `VK_ADD_LAYER_PATH`:
+
+```sh
+cargo run --release --example scene -- docs/screenshots
 ```
 
 ## Limitations and roadmap

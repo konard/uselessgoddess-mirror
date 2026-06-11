@@ -4,64 +4,55 @@ on:
   push:
   pull_request:
 
+env:
+  CARGO_TERM_COLOR: always
+  # Render headlessly through Mesa's lavapipe CPU driver.
+  VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+  XDG_RUNTIME_DIR: /tmp
+
 jobs:
-  format:
+  lint:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Check clang-format
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install glslang
         run: |
-          clang-format-18 --dry-run --Werror \
-            src/*.c src/*.h tests/*.c tests/*.h examples/*.c examples/*.h
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends glslang-tools
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
   build-and-test:
     strategy:
       fail-fast: false
       matrix:
-        compiler: [gcc, clang]
-        build_type: [Debug, Release]
+        profile: [dev, release]
     runs-on: ubuntu-24.04
-    env:
-      CC: ${{ matrix.compiler }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Vulkan stack
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build libvulkan-dev vulkan-tools glslang-tools \
-            mesa-vulkan-drivers vulkan-validationlayers zlib1g-dev
-      - name: Configure
-        run: cmake --preset ci -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+            glslang-tools mesa-vulkan-drivers vulkan-tools \
+            vulkan-validationlayers libvulkan1
       - name: Build
-        run: cmake --build --preset ci
+        run: cargo build --workspace --profile ${{ matrix.profile }}
       - name: Test
-        run: ctest --preset ci
+        run: cargo test --workspace --profile ${{ matrix.profile }} -- --nocapture
+      - name: Render screenshots
+        if: matrix.profile == 'release'
+        run: cargo run --release --example scene -- docs/screenshots
       - name: Upload screenshots
-        if: matrix.compiler == 'gcc' && matrix.build_type == 'Release'
+        if: matrix.profile == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
-          path: build/ci/screenshots/*.png
+          path: docs/screenshots/*.png
           if-no-files-found: error
-
-  sanitize:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake ninja-build libvulkan-dev vulkan-tools glslang-tools \
-            mesa-vulkan-drivers vulkan-validationlayers zlib1g-dev
-      - name: Configure
-        run: cmake --preset sanitize
-      - name: Build
-        run: cmake --build --preset sanitize
-      - name: Test
-        # The Vulkan loader and the mesa driver leak a few allocations by
-        # design (dlopen'd modules); leak checking would only report those.
-        env:
-          ASAN_OPTIONS: detect_leaks=0
-        run: ctest --preset sanitize
