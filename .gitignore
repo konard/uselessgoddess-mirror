@@ -1,0 +1,7 @@
+build/
+.cache/
+ci-logs/
+compile_commands.json
+*.spv
+*.o
+*.so
