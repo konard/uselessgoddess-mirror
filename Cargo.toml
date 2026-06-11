@@ -1,0 +1,35 @@
+[package]
+name = "mirror"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.77"
+description = "Vulkan layer that renders depth instead of materials, with configurable highlights"
+homepage = "https://github.com/uselessgoddess/mirror"
+repository = "https://github.com/uselessgoddess/mirror"
+license = "MIT"
+publish = false
+
+[workspace]
+members = ["vku"]
+
+# The layer is a shared object loaded by the Vulkan loader; `rlib` additionally
+# lets the integration tests and examples link the crate's helpers.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ash = { version = "0.38", default-features = false }
+
+[build-dependencies]
+# Shaders are compiled to SPIR-V at build time with glslangValidator; no crate
+# dependency is required for that, only the external tool.
+
+[dev-dependencies]
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+vku = { path = "vku" }
+png = "0.17"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
